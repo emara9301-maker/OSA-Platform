@@ -11,7 +11,7 @@ export async function saveAttendance(formData: FormData) {
   const sessionId = String(formData.get("session_id") ?? "");
   const supabase = await createServerSupabase();
 
-  const rows: { session_id: string; student_id: string; status: string; reason: string | null }[] = [];
+  const rows: { session_id: string; student_id: string; status: string; reason: string | null; excused: boolean }[] = [];
   for (const [name, raw] of formData.entries()) {
     if (!name.startsWith("status_")) {
       continue;
@@ -28,7 +28,9 @@ export async function saveAttendance(formData: FormData) {
     if (status === "absent" && reason === "") {
       redirect(`/sessions/${sessionId}?error=${encodeURIComponent("A reason is needed when a student is absent.")}`);
     }
-    rows.push({ session_id: sessionId, student_id: studentId, status, reason: reason === "" ? null : reason });
+    // Only an absence can be excused. Other statuses are never excused.
+    const excused = status === "absent" && formData.get(`excused_${studentId}`) === "on";
+    rows.push({ session_id: sessionId, student_id: studentId, status, reason: reason === "" ? null : reason, excused });
   }
 
   if (rows.length > 0) {

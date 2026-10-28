@@ -22,6 +22,7 @@ function navLinks(profile: Profile) {
   if (canManageCondos(profile.role)) {
     links.push({ href: "/families", label: "Families" });
     links.push({ href: "/operations", label: "Operations" });
+    links.push({ href: "/billing", label: "Billing" });
   }
   if (canSeeAdminAreas(profile.role)) {
     links.push({ href: "/packages", label: "Packages" });

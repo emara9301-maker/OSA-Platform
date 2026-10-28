@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { scheduleMakeUp } from "./actions";
+import { resolveAlert, scheduleMakeUp } from "./actions";
 import { canManageCondos, homePathFor } from "@/lib/permissions";
 import { getCurrentProfile } from "@/lib/staff";
 import { createServerSupabase } from "@/lib/supabase-server";
@@ -131,6 +131,13 @@ async function Board({ searchParams }: { searchParams: Promise<{ error?: string;
     (coach) => !runningCoachIds.has(coach.id),
   );
 
+  const { data: alertData } = await supabase
+    .from("operation_alerts")
+    .select("id, body, created_at")
+    .is("resolved_at", null)
+    .order("created_at", { ascending: false });
+  const alerts = (alertData ?? []) as { id: string; body: string; created_at: string }[];
+
   const { data: messageData } = await supabase
     .from("outbound_messages")
     .select("body, created_at")
@@ -140,8 +147,26 @@ async function Board({ searchParams }: { searchParams: Promise<{ error?: string;
 
   return (
     <>
-      {saved && <p role="status">Make-up lesson booked.</p>}
+      {saved === "1" && <p role="status">Make-up lesson booked.</p>}
+      {saved === "alert" && <p role="status">Alert closed.</p>}
       {error && <p role="alert">{error}</p>}
+
+      <h2>Alerts to review</h2>
+      {alerts.length === 0 ? (
+        <p>No open alerts.</p>
+      ) : (
+        <ul>
+          {alerts.map((alert) => (
+            <li key={alert.id} style={{ marginBottom: "0.5rem" }}>
+              {kl(alert.created_at)} — {alert.body}
+              <form action={resolveAlert} style={{ display: "inline" }}>
+                <input type="hidden" name="alert_id" value={alert.id} />
+                <button type="submit">Mark reviewed</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <h2>Lessons today</h2>
       {today.length === 0 ? (

@@ -16,6 +16,15 @@ const rainResults: Record<string, string> = {
   cancelled: "Class cancelled. Every enrolled student has a make-up token.",
 };
 
+const paymentLabels: Record<string, string> = {
+  paid: "Paid",
+  due_soon: "Due soon",
+  overdue: "Overdue",
+  on_hold: "On hold",
+};
+
+const paymentLabel = (status: string | null | undefined) => (status ? paymentLabels[status] ?? status : "-");
+
 const timeInMalaysia = (value: string) =>
   new Date(value).toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit" });
 
@@ -94,10 +103,23 @@ async function SessionAttendance({
     enrolled = enrolled.filter((row) => booked.has(row.student_id));
   }
 
-  const { data: marksData } = await supabase.from("attendance").select("student_id, status, reason").eq("session_id", id);
+  const { data: marksData } = await supabase
+    .from("attendance")
+    .select("student_id, status, reason, excused")
+    .eq("session_id", id);
   const marks = new Map(
-    ((marksData ?? []) as { student_id: string; status: string; reason: string | null }[]).map((row) => [row.student_id, row]),
+    ((marksData ?? []) as { student_id: string; status: string; reason: string | null; excused: boolean }[]).map((row) => [
+      row.student_id,
+      row,
+    ]),
   );
+
+  // Coaches see the payment status only: Paid, Due soon or Overdue.
+  const paymentStatus = new Map<string, string | null>();
+  for (const row of enrolled) {
+    const { data } = await supabase.rpc("student_payment_status", { p_student_id: row.student_id });
+    paymentStatus.set(row.student_id, (data as string | null) ?? null);
+  }
 
   const condoPhone = session.classes?.condos?.contact_phone ?? null;
 
@@ -234,6 +256,11 @@ async function SessionAttendance({
                   Reason (needed for absent)
                   <input name={`reason_${row.student_id}`} defaultValue={mark?.reason ?? ""} />
                 </label>
+                <label>
+                  <input type="checkbox" name={`excused_${row.student_id}`} defaultChecked={mark?.excused ?? false} /> Excused
+                  absence (not deducted)
+                </label>
+                <p>Payment: {paymentLabel(paymentStatus.get(row.student_id))}</p>
               </fieldset>
             );
           })}
