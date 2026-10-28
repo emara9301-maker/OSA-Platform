@@ -1,0 +1,1 @@
+ update public.profiles set role = 'owner' where email = 'thegoldenangel@gmail.com';
