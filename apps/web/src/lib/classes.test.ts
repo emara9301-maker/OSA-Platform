@@ -25,7 +25,7 @@ async function account(name: string, role: AccountRole): Promise<Account> {
     email,
     password,
     email_confirm: true,
-    user_metadata: { age: "30", username: `${name}_${runId}` },
+    user_metadata: { age: "30", date_of_birth: "1996-01-01", username: `${name}_${runId}` },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");
@@ -195,10 +195,11 @@ describe("classes and sessions", () => {
       .limit(1);
     const sessionId = rows?.[0].id as string;
 
-    const { error } = await owner.client
-      .from("sessions")
-      .update({ status: "cancelled", cancel_reason: "Public holiday" })
-      .eq("id", sessionId);
+    const { error } = await owner.client.rpc("cancel_session_for_reason", {
+      p_session_id: sessionId,
+      p_kind: "holiday",
+      p_reason: "Public holiday",
+    });
     expect(error).toBeNull();
 
     const { data: log } = await owner.client
@@ -220,7 +221,7 @@ describe("classes and sessions", () => {
       .limit(1);
     const sessionId = rows?.[0].id as string;
 
-    const { data: coachUpdate } = await coach.client
+    const { error: coachError } = await coach.client
       .from("sessions")
       .update({ status: "cancelled" })
       .eq("id", sessionId)
@@ -228,7 +229,7 @@ describe("classes and sessions", () => {
     const { data: studentClasses } = await student.client.from("classes").select("id");
     const { data: studentSessions } = await student.client.from("sessions").select("id");
 
-    expect(coachUpdate).toEqual([]);
+    expect(coachError).not.toBeNull();
     expect(studentClasses).toEqual([]);
     expect(studentSessions).toEqual([]);
   });
@@ -263,5 +264,17 @@ describe("classes and sessions", () => {
 
     await admin.from("students").update({ family_id: null }).eq("id", studentRecordId);
     await admin.from("families").delete().eq("id", family.id);
+  });
+  it("managers add a level at the end of the list, and coaches cannot", async () => {
+    const levelName = `Test level ${runId}`;
+    const { error: coachError } = await coach.client.from("levels").insert({ name: `${levelName} coach`, sort_order: 99 });
+    expect(coachError).not.toBeNull();
+
+    const { data: last } = await owner.client.from("levels").select("sort_order").order("sort_order", { ascending: false }).limit(1).single();
+    const { error } = await owner.client.from("levels").insert({ name: levelName, sort_order: (last?.sort_order ?? 0) + 1 });
+    expect(error).toBeNull();
+
+    const { data: added } = await owner.client.from("levels").select("id").eq("name", levelName).single();
+    await admin.from("levels").delete().eq("id", added?.id as string);
   });
 });

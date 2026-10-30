@@ -4,7 +4,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { ageFrom, type Student } from "@/lib/students";
+import { ageFrom, studentStatuses, type Student } from "@/lib/students";
 import { canManageCondos } from "@/lib/permissions";
 import { getCurrentProfile } from "@/lib/staff";
 import { createServerSupabase } from "@/lib/supabase-server";
@@ -41,9 +41,14 @@ async function StudentList() {
       ) : (
         <ul>
           {students.map((student) => (
-            <li key={student.id}>
-              <Link href={`/students/${student.id}`}>{student.full_name}</Link> — age{" "}
-              {ageFrom(student.date_of_birth)} — {student.status}
+            <li key={student.id} className="table-row">
+              <Link href={`/students/${student.id}`}>{student.full_name}</Link>
+              <span className="chip">Age {ageFrom(student.date_of_birth)}</span>
+              {canManageCondos(me.role) && (
+                <span className={`status-badge status-${student.status}`}>
+                  {studentStatuses.find((status) => status.value === student.status)?.label}
+                </span>
+              )}
             </li>
           ))}
         </ul>

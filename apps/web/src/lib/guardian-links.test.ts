@@ -26,7 +26,7 @@ async function account(name: string, role: AccountRole, kind: "student" | "guard
     email,
     password,
     email_confirm: true,
-    user_metadata: { age: "35", username: `${name}_${runId}`, account_kind: kind },
+    user_metadata: { age: "35", date_of_birth: "1996-01-01", username: `${name}_${runId}`, account_kind: kind },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");
@@ -53,7 +53,6 @@ describe("guardian link requests", () => {
   let coach: Account;
   let guardian: Account;
   let secondGuardian: Account;
-  let student: Account;
   let childId: string;
   let childToken: string;
   let familyId: string;
@@ -65,7 +64,6 @@ describe("guardian link requests", () => {
     coach = await account("coach", "coach");
     guardian = await account("parent", "student", "guardian");
     secondGuardian = await account("uncle", "student", "guardian");
-    student = await account("student", "student", "student");
 
     const { data: condo, error: condoError } = await owner.client
       .from("condos")

@@ -1,11 +1,14 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
-import { saveAttendance } from "../actions";
-import { saveReports } from "../report-actions";
+import { AttendanceForm } from "../attendance-form";
+import { ReportsForm } from "../reports-form";
 import { cancelWeatherHold, recordThunder, resumeWeatherHold, startWeatherHold } from "../rain-actions";
+import { proposeMakeUp } from "../make-up-actions";
+import { canManageCondos } from "@/lib/permissions";
 import { ageFrom } from "@/lib/students";
 import { homePathFor, isStaff } from "@/lib/permissions";
+import { requestTime } from "@/lib/clock";
 import { getCurrentProfile } from "@/lib/staff";
 import { createServerSupabase } from "@/lib/supabase-server";
 
@@ -14,6 +17,7 @@ const rainResults: Record<string, string> = {
   resumed: "Class resumed. Families have been told.",
   counted: "Most of the lesson was taught, so it counts as a session.",
   cancelled: "Class cancelled. Every enrolled student has a make-up token.",
+  made: "Make-up lesson booked. The families have been told.",
 };
 
 const paymentLabels: Record<string, string> = {
@@ -65,7 +69,7 @@ async function SessionAttendance({
   const { data: sessionData } = await supabase
     .from("sessions")
     .select(
-      "id, starts_at, status, class_id, is_make_up, cancel_reason, rain_stopped, hold_started_at, last_thunder_at, classes(name, coach_id, condo_id, condos(name, contact_phone))",
+      "id, starts_at, ends_at, status, class_id, is_make_up, cancel_reason, rain_stopped, hold_started_at, last_thunder_at, classes(name, coach_id, condo_id, condos(name, contact_phone))",
     )
     .eq("id", id)
     .maybeSingle();
@@ -77,6 +81,7 @@ async function SessionAttendance({
     starts_at: string;
     status: string;
     class_id: string;
+    ends_at: string;
     is_make_up: boolean;
     cancel_reason: string | null;
     rain_stopped: boolean;
@@ -84,6 +89,9 @@ async function SessionAttendance({
     last_thunder_at: string | null;
     classes: { name: string; condo_id: string; condos: { name: string; contact_phone: string | null } | null } | null;
   };
+
+  const now = await requestTime();
+  const running = now >= new Date(session.starts_at).getTime() && now < new Date(session.ends_at).getTime();
 
   const { data: enrolData } = await supabase
     .from("class_enrolments")
@@ -102,6 +110,15 @@ async function SessionAttendance({
     const booked = new Set(((bookedData ?? []) as { student_id: string }[]).map((row) => row.student_id));
     enrolled = enrolled.filter((row) => booked.has(row.student_id));
   }
+
+  const { count: openTokenCount } = await supabase
+    .from("make_up_tokens")
+    .select("id", { count: "exact", head: true })
+    .eq("source_session_id", id)
+    .eq("status", "open");
+  const openTokens = openTokenCount ?? 0;
+  const { data: proposeData } = await supabase.rpc("staff_setting", { p_key: "coach_propose_make_up" });
+  const proposeAllowed = Number(proposeData) === 1;
 
   const { data: marksData } = await supabase
     .from("attendance")
@@ -122,6 +139,25 @@ async function SessionAttendance({
   }
 
   const condoPhone = session.classes?.condos?.contact_phone ?? null;
+
+  const attendanceStudents = enrolled.map((row) => {
+    const mark = marks.get(row.student_id);
+    const status = paymentStatus.get(row.student_id);
+    return {
+      id: row.student_id,
+      name: row.students?.full_name ?? "student",
+      age: row.students ? String(ageFrom(row.students.date_of_birth)) : "-",
+      medicalNotes: row.students?.medical_notes ?? "",
+      allergies: row.students?.allergies ?? "",
+      emergencyName: row.students?.emergency_contact_name ?? "",
+      emergencyPhone: row.students?.emergency_contact_phone ?? null,
+      condoPhone,
+      paymentLabel: paymentLabel(status),
+      status: mark?.status ?? "",
+      reason: mark?.reason ?? "",
+      excused: mark?.excused ?? false,
+    };
+  });
 
   const { data: classRow } = await supabase
     .from("classes")
@@ -172,6 +208,25 @@ async function SessionAttendance({
     .in("report_id", reportIds.length ? reportIds : none);
   const noteByReport = new Map(((noteRows ?? []) as { report_id: string; note: string }[]).map((n) => [n.report_id, n.note]));
 
+  const reportStudents = enrolled.map((row) => {
+    const report = reportByStudent.get(row.student_id);
+    const progress = report ? progressByReport.get(report.id) ?? new Map<string, number>() : new Map<string, number>();
+    return {
+      id: row.student_id,
+      name: row.students?.full_name ?? "student",
+      attitude: report?.attitude ? String(report.attitude) : "",
+      effort: report?.effort ? String(report.effort) : "",
+      water: report?.water_confidence ? String(report.water_confidence) : "",
+      improvements: report?.improvements ?? "",
+      note: report?.note_to_parent ?? "",
+      internal: report ? noteByReport.get(report.id) ?? "" : "",
+      next: report?.next_focus_skill_id ?? "",
+      move: "",
+      problems: report?.problems ?? [],
+      progress: Object.fromEntries([...progress.entries()].map(([skillId, value]) => [skillId, String(value)])),
+    };
+  });
+
   return (
     <>
       <p>
@@ -184,13 +239,29 @@ async function SessionAttendance({
       {rain && rainResults[rain] && <p role="status">{rainResults[rain]}</p>}
       {error && <p role="alert">{error}</p>}
 
+      {session.status === "cancelled" && openTokens > 0 && (canManageCondos(me.role) || proposeAllowed) && (
+        <>
+          <h2>Make-up time</h2>
+          <form action={proposeMakeUp}>
+            <input type="hidden" name="session_id" value={id} />
+            <input type="hidden" name="class_id" value={session.class_id} />
+            <label>
+              Time for the make-up lesson (Malaysia)
+              <input type="datetime-local" name="manual_time" required />
+            </label>
+            <button type="submit">Book make-up time</button>
+          </form>
+        </>
+      )}
+
       <h2>Weather</h2>
-      {session.status === "scheduled" && (
+      {session.status === "scheduled" && running && (
         <form action={startWeatherHold}>
           <input type="hidden" name="session_id" value={id} />
           <button type="submit">Weather hold</button>
         </form>
       )}
+      {session.status === "scheduled" && !running && <p>A weather hold can be placed while the lesson is running.</p>}
       {session.status === "paused" && (
         <>
           <p>
@@ -217,169 +288,14 @@ async function SessionAttendance({
       {enrolled.length === 0 ? (
         <p>No students enrolled in this class.</p>
       ) : (
-        <form action={saveAttendance}>
-          <input type="hidden" name="session_id" value={id} />
-          {enrolled.map((row) => {
-            const student = row.students;
-            const mark = marks.get(row.student_id);
-            return (
-              <fieldset key={row.student_id}>
-                <legend>
-                  {student?.full_name ?? "student"} — age {student ? ageFrom(student.date_of_birth) : "-"}
-                </legend>
-
-                <details>
-                  <summary>Emergency details</summary>
-                  <p>Medical notes: {student?.medical_notes ?? "-"}</p>
-                  <p>Allergies: {student?.allergies ?? "-"}</p>
-                  <p>
-                    Emergency contact: {student?.emergency_contact_name ?? "-"}{" "}
-                    {student?.emergency_contact_phone && <a href={`tel:${student.emergency_contact_phone}`}>call</a>}
-                  </p>
-                  {condoPhone && (
-                    <p>
-                      <a href={`tel:${condoPhone}`}>Call the condo office</a>
-                    </p>
-                  )}
-                </details>
-
-                <label>
-                  Attendance
-                  <select name={`status_${row.student_id}`} defaultValue={mark?.status ?? ""}>
-                    <option value="">Not marked</option>
-                    <option value="present">Present</option>
-                    <option value="late">Late</option>
-                    <option value="absent">Absent</option>
-                  </select>
-                </label>
-                <label>
-                  Reason (needed for absent)
-                  <input name={`reason_${row.student_id}`} defaultValue={mark?.reason ?? ""} />
-                </label>
-                <label>
-                  <input type="checkbox" name={`excused_${row.student_id}`} defaultChecked={mark?.excused ?? false} /> Excused
-                  absence (not deducted)
-                </label>
-                <p>Payment: {paymentLabel(paymentStatus.get(row.student_id))}</p>
-              </fieldset>
-            );
-          })}
-          <button type="submit">Save attendance</button>
-        </form>
+        <AttendanceForm sessionId={id} students={attendanceStudents} />
       )}
 
       <h2>Daily reports</h2>
       {enrolled.length > 0 && (
-        <form action={saveReports}>
-          <input type="hidden" name="session_id" value={id} />
-          {enrolled.map((row) => {
-            const student = row.students;
-            const report = reportByStudent.get(row.student_id);
-            const progress = report ? progressByReport.get(report.id) ?? new Map<string, number>() : new Map<string, number>();
-            const internal = report ? noteByReport.get(report.id) ?? "" : "";
-            return (
-              <fieldset key={`report-${row.student_id}`}>
-                <legend>Report: {student?.full_name ?? "student"}</legend>
-
-                {skills.map((skill) => (
-                  <label key={skill.id}>
-                    {skill.name}
-                    <select
-                      name={`skill_${row.student_id}_${skill.id}`}
-                      defaultValue={progress.has(skill.id) ? String(progress.get(skill.id)) : ""}
-                    >
-                      <option value="">Not worked on</option>
-                      {[0, 25, 50, 75, 100].map((p) => (
-                        <option key={p} value={p}>
-                          {p}%
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-
-                <RatingSelect label="Attitude (1-5)" name={`attitude_${row.student_id}`} value={report?.attitude} />
-                <RatingSelect label="Effort and focus (1-5)" name={`effort_${row.student_id}`} value={report?.effort} />
-                <RatingSelect label="Water confidence (1-5)" name={`water_${row.student_id}`} value={report?.water_confidence} />
-
-                <label>
-                  Improvements today
-                  <textarea name={`improvements_${row.student_id}`} defaultValue={report?.improvements ?? ""} />
-                </label>
-
-                <fieldset>
-                  <legend>Problems</legend>
-                  {[
-                    ["fear", "Fear"],
-                    ["behaviour", "Behaviour"],
-                    ["health", "Health"],
-                    ["missing_gear", "Missing gear"],
-                    ["late", "Late"],
-                  ].map(([key, label]) => (
-                    <label key={key}>
-                      <input
-                        type="checkbox"
-                        name={`problem_${row.student_id}_${key}`}
-                        defaultChecked={report?.problems.includes(key) ?? false}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </fieldset>
-
-                <label>
-                  Note to parent
-                  <textarea name={`note_${row.student_id}`} defaultValue={report?.note_to_parent ?? ""} />
-                </label>
-                <label>
-                  Internal note (not shown to parents)
-                  <textarea name={`internal_${row.student_id}`} defaultValue={internal} />
-                </label>
-                <label>
-                  Next lesson focus
-                  <select name={`next_${row.student_id}`} defaultValue={report?.next_focus_skill_id ?? ""}>
-                    <option value="">None</option>
-                    {skills.map((skill) => (
-                      <option key={skill.id} value={skill.id}>
-                        {skill.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Move to level
-                  <select name={`move_${row.student_id}`} defaultValue="">
-                    <option value="">Stay at current level</option>
-                    {levels.map((level) => (
-                      <option key={level.id} value={level.id}>
-                        {level.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </fieldset>
-            );
-          })}
-          <button type="submit">Save reports</button>
-        </form>
+        <ReportsForm sessionId={id} students={reportStudents} skills={skills} levels={levels} />
       )}
     </>
-  );
-}
-
-function RatingSelect({ label, name, value }: { label: string; name: string; value?: number | null }) {
-  return (
-    <label>
-      {label}
-      <select name={name} defaultValue={value ? String(value) : ""}>
-        <option value="">Not rated</option>
-        {[1, 2, 3, 4, 5].map((n) => (
-          <option key={n} value={n}>
-            {n}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 

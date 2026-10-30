@@ -18,6 +18,7 @@ export async function saveClass(formData: FormData) {
   const input = {
     name: text(formData, "name") ?? "",
     condo_id: text(formData, "condo_id") ?? "",
+    pool_id: text(formData, "pool_id"),
     coach_id: text(formData, "coach_id") ?? "",
     level_id: text(formData, "level_id") ?? "",
     class_type: text(formData, "class_type") ?? "group",
@@ -29,6 +30,15 @@ export async function saveClass(formData: FormData) {
     end_date: text(formData, "end_date") ?? "",
   };
   const supabase = await createServerSupabase();
+
+  // The pool must belong to the chosen condo.
+  if (input.pool_id) {
+    const { data: pool } = await supabase.from("pools").select("condo_id").eq("id", input.pool_id).maybeSingle();
+    if (pool?.condo_id !== input.condo_id) {
+      const back = id ? `/classes/${id}` : "/classes/new";
+      redirect(`${back}?error=${encodeURIComponent("The pool must belong to the chosen condo.")}`);
+    }
+  }
 
   if (id) {
     const { error } = await supabase.from("classes").update(input).eq("id", id);

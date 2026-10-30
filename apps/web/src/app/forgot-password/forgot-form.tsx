@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
+import { t, type Lang } from "@/lib/messages";
 
-export function ForgotForm() {
+export function ForgotForm({ lang }: { lang: Lang }) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -19,24 +20,22 @@ export function ForgotForm() {
     });
 
     setBusy(false);
-    setMessage(
-      error ? error.message : "If this email has an account, a reset link has been sent.",
-    );
+    setMessage(error ? error.message : t(lang, "resetSent"));
   }
 
   return (
     <form onSubmit={submit}>
       <label>
-        Email
+        {t(lang, "email")}
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </label>
       <button type="submit" disabled={busy}>
-        Send reset link
+        {t(lang, "sendReset")}
       </button>
       {message && <p role="alert">{message}</p>}
 
       <nav>
-        <Link href="/login">Log in</Link>
+        <Link href="/login">{t(lang, "logIn")}</Link>
       </nav>
     </form>
   );

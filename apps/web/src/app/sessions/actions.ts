@@ -2,16 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { saveAttendanceRows, type AttendanceRow, type AttendanceStatus } from "@/lib/attendance-save";
 import { createServerSupabase } from "@/lib/supabase-server";
 
 const statuses = ["present", "late", "absent"] as const;
 
-// Fields: "status_<studentId>" (blank means not marked) and "reason_<studentId>".
+// Fields: "status_<studentId>" (blank means not marked), "reason_<studentId>" and "excused_<studentId>".
 export async function saveAttendance(formData: FormData) {
   const sessionId = String(formData.get("session_id") ?? "");
   const supabase = await createServerSupabase();
 
-  const rows: { session_id: string; student_id: string; status: string; reason: string | null; excused: boolean }[] = [];
+  const rows: AttendanceRow[] = [];
   for (const [name, raw] of formData.entries()) {
     if (!name.startsWith("status_")) {
       continue;
@@ -30,16 +31,32 @@ export async function saveAttendance(formData: FormData) {
     }
     // Only an absence can be excused. Other statuses are never excused.
     const excused = status === "absent" && formData.get(`excused_${studentId}`) === "on";
-    rows.push({ session_id: sessionId, student_id: studentId, status, reason: reason === "" ? null : reason, excused });
+    rows.push({
+      student_id: studentId,
+      status: status as AttendanceStatus,
+      reason: reason === "" ? null : reason,
+      excused,
+    });
   }
 
-  if (rows.length > 0) {
-    const { error } = await supabase.from("attendance").upsert(rows, { onConflict: "session_id,student_id" });
-    if (error) {
-      redirect(`/sessions/${sessionId}?error=${encodeURIComponent(error.message)}`);
-    }
+  let result;
+  try {
+    result = await saveAttendanceRows(supabase, sessionId, rows);
+  } catch (error) {
+    redirect(`/sessions/${sessionId}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not save.")}`);
   }
 
   revalidatePath(`/sessions/${sessionId}`);
+  if (result.blocked.length > 0) {
+    const { data: names } = await supabase
+      .from("students")
+      .select("id, full_name")
+      .in("id", result.blocked.map((row) => row.studentId));
+    const nameOf = new Map(((names ?? []) as { id: string; full_name: string }[]).map((row) => [row.id, row.full_name]));
+    const message = result.blocked
+      .map((row) => `${nameOf.get(row.studentId) ?? "Student"}: ${row.reason}`)
+      .join(" ");
+    redirect(`/sessions/${sessionId}?error=${encodeURIComponent(`Not marked as attending. ${message}`)}`);
+  }
   redirect(`/sessions/${sessionId}?saved=1`);
 }

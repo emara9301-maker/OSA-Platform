@@ -2,9 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { problemKeys, saveReportRows, type ReportRow } from "@/lib/report-save";
 import { createServerSupabase } from "@/lib/supabase-server";
-
-const problemKeys = ["fear", "behaviour", "health", "missing_gear", "late"] as const;
 
 function value(formData: FormData, name: string): string {
   return String(formData.get(name) ?? "").trim();
@@ -15,93 +14,44 @@ function value(formData: FormData, name: string): string {
 export async function saveReports(formData: FormData) {
   const sessionId = value(formData, "session_id");
   const supabase = await createServerSupabase();
-  function fail(message: string): never {
-    redirect(`/sessions/${sessionId}?error=${encodeURIComponent(message)}`);
-  }
 
   const { data: session } = await supabase.from("sessions").select("class_id").eq("id", sessionId).maybeSingle();
   if (!session) {
-    fail("This lesson could not be found.");
+    redirect(`/sessions/${sessionId}?error=${encodeURIComponent("This lesson could not be found.")}`);
   }
   const { data: enrolled } = await supabase
     .from("class_enrolments")
     .select("student_id")
     .eq("class_id", (session as { class_id: string }).class_id);
 
+  const rows: ReportRow[] = [];
   for (const row of (enrolled ?? []) as { student_id: string }[]) {
     const id = row.student_id;
-    const attitude = value(formData, `attitude_${id}`);
-    const effort = value(formData, `effort_${id}`);
-    const water = value(formData, `water_${id}`);
-    const improvements = value(formData, `improvements_${id}`);
-    const note = value(formData, `note_${id}`);
-    const internal = value(formData, `internal_${id}`);
-    const next = value(formData, `next_${id}`);
-    const move = value(formData, `move_${id}`);
-    const problems = problemKeys.filter((key) => formData.get(`problem_${id}_${key}`) === "on");
     const skills: { skill_id: string; progress_percent: number }[] = [];
     for (const [name, raw] of formData.entries()) {
       if (name.startsWith(`skill_${id}_`) && String(raw) !== "") {
         skills.push({ skill_id: name.slice(`skill_${id}_`.length), progress_percent: Number(raw) });
       }
     }
+    rows.push({
+      student_id: id,
+      attitude: value(formData, `attitude_${id}`) ? Number(value(formData, `attitude_${id}`)) : null,
+      effort: value(formData, `effort_${id}`) ? Number(value(formData, `effort_${id}`)) : null,
+      water_confidence: value(formData, `water_${id}`) ? Number(value(formData, `water_${id}`)) : null,
+      improvements: value(formData, `improvements_${id}`),
+      note_to_parent: value(formData, `note_${id}`),
+      internal: value(formData, `internal_${id}`),
+      next_focus_skill_id: value(formData, `next_${id}`),
+      move_level_id: value(formData, `move_${id}`),
+      problems: problemKeys.filter((key) => formData.get(`problem_${id}_${key}`) === "on"),
+      skills,
+    });
+  }
 
-    const hasReport =
-      attitude || effort || water || improvements || note || next || problems.length > 0 || skills.length > 0;
-
-    if (hasReport) {
-      const { data: report, error } = await supabase
-        .from("reports")
-        .upsert(
-          {
-            session_id: sessionId,
-            student_id: id,
-            attitude: attitude ? Number(attitude) : null,
-            effort: effort ? Number(effort) : null,
-            water_confidence: water ? Number(water) : null,
-            improvements: improvements || null,
-            note_to_parent: note || null,
-            problems,
-            next_focus_skill_id: next || null,
-          },
-          { onConflict: "session_id,student_id" },
-        )
-        .select("id")
-        .single();
-      if (error || !report) {
-        fail(error?.message ?? "The report could not be saved.");
-      }
-
-      await supabase.from("report_skills").delete().eq("report_id", report.id);
-      if (skills.length > 0) {
-        const { error: skillError } = await supabase
-          .from("report_skills")
-          .insert(skills.map((skill) => ({ ...skill, report_id: report.id })));
-        if (skillError) {
-          fail(skillError.message);
-        }
-      }
-
-      if (internal) {
-        const { error: noteError } = await supabase
-          .from("report_internal_notes")
-          .upsert({ report_id: report.id, note: internal }, { onConflict: "report_id" });
-        if (noteError) {
-          fail(noteError.message);
-        }
-      }
-    }
-
-    if (move) {
-      const { error: moveError } = await supabase.rpc("move_student_level", {
-        p_session: sessionId,
-        p_student: id,
-        p_level_id: move,
-      });
-      if (moveError) {
-        fail(moveError.message);
-      }
-    }
+  try {
+    await saveReportRows(supabase, sessionId, rows);
+  } catch (error) {
+    redirect(`/sessions/${sessionId}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not save.")}`);
   }
 
   revalidatePath(`/sessions/${sessionId}`);

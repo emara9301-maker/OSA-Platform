@@ -2,11 +2,33 @@ import type { Package } from "@/lib/packages";
 import { packageBadges, packageTypes } from "@/lib/packages";
 import { savePackage } from "./actions";
 
-export function PackageForm({ item, error }: { item: Package | null; error?: string }) {
+export function PackageForm({
+  item,
+  pools,
+  error,
+}: {
+  item: Package | null;
+  pools: { id: string; name: string }[];
+  error?: string;
+}) {
   return (
     <form action={savePackage}>
       {item && <input type="hidden" name="id" value={item.id} />}
       <input type="hidden" name="current_image_url" value={item?.image_url ?? ""} />
+
+      <label>
+        Pool (this package is sold only at this pool)
+        <select name="pool_id" required defaultValue={item?.pool_id ?? ""}>
+          <option value="" disabled>
+            Choose a pool
+          </option>
+          {pools.map((pool) => (
+            <option key={pool.id} value={pool.id}>
+              {pool.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <Field label="Name" name="name" value={item?.name} required />
       <Field label="Short pitch" name="short_pitch" value={item?.short_pitch} />

@@ -24,11 +24,14 @@ async function NewClassForm({ searchParams }: { searchParams: Promise<{ error?: 
   const { data: condos } = await supabase.from("condos").select("id, name").order("name");
   const { data: coaches } = await supabase.from("profiles").select("id, username").eq("role", "coach").order("username");
   const { data: levels } = await supabase.from("levels").select("id, name").eq("is_active", true).order("sort_order");
+  const { data: poolData } = await supabase.from("pools").select("id, name, condo_id").order("sort_order");
+  const pools = (poolData ?? []) as { id: string; name: string; condo_id: string }[];
 
   return (
     <ClassForm
       item={null}
       condos={(condos ?? []) as { id: string; name: string }[]}
+      pools={pools}
       coaches={((coaches ?? []) as { id: string; username: string | null }[]).map((c) => ({
         id: c.id,
         name: c.username ?? "no username",

@@ -5,6 +5,7 @@ export function CondoForm({ condo, error }: { condo: Condo | null; error?: strin
   return (
     <form action={saveCondo}>
       {condo && <input type="hidden" name="id" value={condo.id} />}
+      <input type="hidden" name="current_image_url" value={condo?.image_url ?? ""} />
 
       <Field label="Name" name="name" value={condo?.name} required />
       <Field label="Area" name="area" value={condo?.area} />
@@ -15,6 +16,16 @@ export function CondoForm({ condo, error }: { condo: Condo | null; error?: strin
       <Field label="Contact phone" name="contact_phone" type="tel" value={condo?.contact_phone} />
       <TextArea label="Pool rules" name="rules" value={condo?.rules} />
       <TextArea label="Access notes (access card, lift, parking)" name="access_notes" value={condo?.access_notes} />
+
+      <label>
+        Photo of the pool (JPG, PNG or WebP, up to 5 MB)
+        <input type="file" name="image" accept="image/jpeg,image/png,image/webp" />
+      </label>
+      {condo?.image_url && (
+        <p>
+          Current photo: <a href={condo.image_url}>view</a>. Choose a file above to replace it.
+        </p>
+      )}
 
       <button type="submit">{condo ? "Save changes" : "Add condo"}</button>
       {error && <p role="alert">{error}</p>}

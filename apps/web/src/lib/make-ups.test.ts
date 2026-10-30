@@ -32,6 +32,7 @@ describe("suggestMakeUpSlots", () => {
       busy: [],
       count: 3,
       searchDays: 14,
+      stepMinutes: 30,
     });
     expect(slots.map((s) => s.toISOString())).toEqual([
       "2026-10-27T08:00:00.000Z",
@@ -49,6 +50,7 @@ describe("suggestMakeUpSlots", () => {
       busy: [{ start: new Date("2026-10-27T08:00:00Z"), end: new Date("2026-10-27T08:45:00Z") }],
       count: 2,
       searchDays: 14,
+      stepMinutes: 30,
     });
     expect(slots[0].toISOString()).toBe("2026-10-27T09:00:00.000Z");
   });
@@ -62,6 +64,7 @@ describe("suggestMakeUpSlots", () => {
       busy: [],
       count: 5,
       searchDays: 2,
+      stepMinutes: 30,
     });
     expect(slots.map((s) => s.toISOString())).toEqual(["2026-10-27T23:00:00.000Z"]);
   });

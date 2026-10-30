@@ -54,11 +54,13 @@ async function ClassDetail({
   let condos: Option[] = [];
   let coaches: Option[] = [];
   let levels: Option[] = [];
+  let pools: { id: string; name: string; condo_id: string }[] = [];
   let students: Option[] = [];
   if (manage) {
     const { data: condoData } = await supabase.from("condos").select("id, name").order("name");
     const { data: coachData } = await supabase.from("profiles").select("id, username").eq("role", "coach");
     const { data: levelData } = await supabase.from("levels").select("id, name").order("sort_order");
+    const { data: poolData } = await supabase.from("pools").select("id, name, condo_id").order("sort_order");
     const { data: studentData } = await supabase.from("students").select("id, full_name").order("full_name");
     condos = (condoData ?? []) as Option[];
     coaches = ((coachData ?? []) as { id: string; username: string | null }[]).map((c) => ({
@@ -66,6 +68,7 @@ async function ClassDetail({
       name: c.username ?? "no username",
     }));
     levels = (levelData ?? []) as Option[];
+    pools = (poolData ?? []) as { id: string; name: string; condo_id: string }[];
     const enrolledIds = new Set(enrolled.map((row) => row.student_id));
     students = ((studentData ?? []) as { id: string; full_name: string }[])
       .filter((student) => !enrolledIds.has(student.id))
@@ -151,7 +154,7 @@ async function ClassDetail({
       {manage && (
         <>
           <h2>Edit</h2>
-          <ClassForm item={item} condos={condos} coaches={coaches} levels={levels} error={error} />
+          <ClassForm item={item} condos={condos} pools={pools} coaches={coaches} levels={levels} error={error} />
         </>
       )}
     </>

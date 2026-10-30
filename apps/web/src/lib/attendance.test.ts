@@ -25,7 +25,7 @@ async function account(name: string, role: AccountRole): Promise<Account> {
     email,
     password,
     email_confirm: true,
-    user_metadata: { age: "30", username: `${name}_${runId}` },
+    user_metadata: { age: "30", date_of_birth: "1996-01-01", username: `${name}_${runId}` },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");
@@ -45,6 +45,19 @@ async function account(name: string, role: AccountRole): Promise<Account> {
     throw new Error(signInError.message);
   }
   return { id: data.user.id, client };
+}
+
+
+// A paid package with plenty of sessions, so the student may be marked as attending.
+async function grantPackage(owner: { id: string; client: SupabaseClient }, studentId: string, poolId: string) {
+  const { data: pkg } = await owner.client
+    .from("packages")
+    .insert({ condo_id: poolId, name: `Attend package ${runId} ${studentId.slice(0, 6)}`, type: "small_group", sessions_count: 50, session_minutes: 60, price: 100, is_active: true })
+    .select("id")
+    .single();
+  const { data: invoiceId } = await owner.client.rpc("create_invoice", { p_student_id: studentId, p_package_id: pkg?.id });
+  await admin.rpc("apply_payment", { p_invoice_id: invoiceId, p_gateway: "mock", p_gateway_ref: `MOCK-${studentId.slice(0, 8)}`, p_recorded_by: owner.id });
+  await admin.from("student_packages").update({ ends_on: "2030-12-31" }).eq("student_id", studentId);
 }
 
 describe("attendance and incidents", () => {
@@ -117,6 +130,7 @@ describe("attendance and incidents", () => {
     notEnrolledId = outsider?.id as string;
 
     await admin.from("class_enrolments").insert({ class_id: klass.id, student_id: enrolledId });
+    await grantPackage(owner, enrolledId, condoId);
   });
 
   afterAll(async () => {

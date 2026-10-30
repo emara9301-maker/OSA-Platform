@@ -64,9 +64,7 @@ export function StudentForm({
         </select>
       </label>
 
-      <Field label="Start level" name="start_level" value={student?.start_level} />
-      <Field label="Current level" name="current_level" value={student?.current_level} />
-      <Field label="Start date" name="start_date" type="date" value={student?.start_date} />
+      <p className="pool-area">Start level, current level and start date are set from the classes the student joins and attends.</p>
 
       <TextArea label="Medical notes" name="medical_notes" value={student?.medical_notes} />
       <TextArea label="Allergies" name="allergies" value={student?.allergies} />

@@ -2,38 +2,11 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { canManageCondos, canSeeAdminAreas, isStaff } from "@/lib/permissions";
+import { canManageCondos, isStaff } from "@/lib/permissions";
+import { staffGroups } from "@/lib/nav";
 import { countMissingReports } from "@/lib/reports";
-import { getCurrentProfile, type Profile } from "@/lib/staff";
+import { getCurrentProfile } from "@/lib/staff";
 import { createServerSupabase } from "@/lib/supabase-server";
-
-// Only the links this account is allowed to open. A student never sees the admin areas.
-function navLinks(profile: Profile) {
-  const links: { href: string; label: string }[] = [];
-  if (isStaff(profile.role)) {
-    links.push({ href: "/condos", label: "Condos" });
-  }
-  if (isStaff(profile.role)) {
-    links.push({ href: "/students", label: "Students" });
-    links.push({ href: "/classes", label: "Classes" });
-    links.push({ href: "/schedule", label: "Schedule" });
-    links.push({ href: "/incidents", label: "Incidents" });
-  }
-  if (canManageCondos(profile.role)) {
-    links.push({ href: "/families", label: "Families" });
-    links.push({ href: "/operations", label: "Operations" });
-    links.push({ href: "/billing", label: "Billing" });
-  }
-  if (canSeeAdminAreas(profile.role)) {
-    links.push({ href: "/packages", label: "Packages" });
-    links.push({ href: "/settings", label: "Settings" });
-    links.push({ href: "/audit-log", label: "Audit log" });
-  }
-  if (canSeeAdminAreas(profile.role) || profile.role === "head_coach") {
-    links.push({ href: "/settings/roles", label: "Roles" });
-  }
-  return links;
-}
 
 async function ProfileHome() {
   await connection();
@@ -49,38 +22,61 @@ async function ProfileHome() {
   }
 
   if (!isStaff(profile.role)) {
-    redirect("/me");
+    // A family or student without a condo yet starts on the home page, to choose one.
+    const { data: condoId } = await supabase.rpc("my_condo_id");
+    redirect(condoId ? "/me" : "/");
   }
 
-  const missingReports = isStaff(profile.role) ? await countMissingReports(supabase) : 0;
+  const { data: missingDays } = isStaff(profile.role)
+    ? await supabase.rpc("staff_setting", { p_key: "missing_report_days" })
+    : { data: 0 };
+  const missingReports = isStaff(profile.role) ? await countMissingReports(supabase, Number(missingDays)) : 0;
 
   const { count: pendingLinks } = await supabase
     .from("guardian_link_requests")
     .select("id", { count: "exact", head: true })
     .eq("status", "pending");
 
+  const showLinks = canManageCondos(profile.role) && (pendingLinks ?? 0) > 0;
+
   return (
     <>
-      <p>Welcome, {profile.username ?? profile.full_name}</p>
-      <p>Role: {profile.role}</p>
-      {missingReports > 0 && (
-        <p>
-          <Link href="/schedule">Reports missing: {missingReports} student lessons</Link>
-        </p>
+      <section className="welcome">
+        <div>
+          <p className="welcome-hi">Welcome back</p>
+          <h1>{profile.username ?? profile.full_name}</h1>
+        </div>
+        <span className="badge">{profile.role.replace(/_/g, " ")}</span>
+      </section>
+
+      {(missingReports > 0 || showLinks) && (
+        <div className="alerts">
+          {missingReports > 0 && (
+            <Link className="alert-card" href="/schedule">
+              <strong>{missingReports}</strong> student lessons are missing reports
+            </Link>
+          )}
+          {showLinks && (
+            <Link className="alert-card" href="/link-requests">
+              <strong>{pendingLinks}</strong> link requests waiting
+            </Link>
+          )}
+        </div>
       )}
-      {canManageCondos(profile.role) && (pendingLinks ?? 0) > 0 && (
-        <p>
-          <Link href="/link-requests">Link requests: {pendingLinks} waiting</Link>
-        </p>
-      )}
-      <nav>
-        {navLinks(profile).map((link, index) => (
-          <span key={link.href}>
-            {index > 0 && " | "}
-            <Link href={link.href}>{link.label}</Link>
-          </span>
-        ))}
-      </nav>
+
+      {staffGroups(profile.role).map((group) => (
+        <section key={group.title}>
+          <h2>{group.title}</h2>
+          <div className="tiles">
+            {group.links.map((link) => (
+              <Link key={link.href} className="tile" href={link.href}>
+                <span className="tile-title">{link.label}</span>
+                <span className="tile-hint">{link.hint}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ))}
     </>
   );
 }
@@ -88,7 +84,6 @@ async function ProfileHome() {
 export default function DashboardPage() {
   return (
     <main>
-      <h1>Dashboard</h1>
       <Suspense fallback={<p>Loading...</p>}>
         <ProfileHome />
       </Suspense>

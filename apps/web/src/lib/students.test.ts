@@ -26,7 +26,7 @@ async function accountWithRole(name: string, role: AccountRole): Promise<Account
     email,
     password,
     email_confirm: true,
-    user_metadata: { age: "30", username: `${name}_${runId}` },
+    user_metadata: { age: "30", date_of_birth: "1996-01-01", username: `${name}_${runId}` },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");

@@ -23,7 +23,7 @@ async function createAccount(name: string, role: AccountRole = "student"): Promi
   const { data, error } = await admin.auth.admin.createUser({
     email,
     email_confirm: true,
-    user_metadata: { age: "30", username: `${name.replace(/-/g, "_")}_${runId}` },
+    user_metadata: { age: "30", date_of_birth: "1996-01-01", username: `${name.replace(/-/g, "_")}_${runId}` },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");
@@ -156,6 +156,35 @@ describe("accounts and roles", () => {
     const { error } = await setRole(coachClient, student, "student");
 
     expect(error).not.toBeNull();
+  });
+
+  it("shows a head coach only coaches and students, not the owner or department heads", async () => {
+    const client = await signedInClient(headCoach.email);
+
+    const { data, error } = await client.from("profiles").select("id, role");
+
+    expect(error).toBeNull();
+    const roles = (data ?? []).map((row) => row.role);
+    expect(roles).not.toContain("owner");
+    expect(roles).not.toContain("department_head");
+    expect((data ?? []).map((row) => row.id)).toContain(coach.id);
+  });
+
+  it("offers a head coach only coach and student as new roles", async () => {
+    const client = await signedInClient(headCoach.email);
+
+    const { data, error } = await client.rpc("assignable_roles");
+
+    expect(error).toBeNull();
+    expect([...(data ?? [])].sort()).toEqual(["coach", "student"]);
+  });
+
+  it("hides the owner from a department head", async () => {
+    const client = await signedInClient(deptHeadA.email);
+
+    const { data } = await client.from("profiles").select("id, role");
+
+    expect((data ?? []).map((row) => row.role)).not.toContain("owner");
   });
 
   it("stops anyone from changing their own role with a direct update", async () => {

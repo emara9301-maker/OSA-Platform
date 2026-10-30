@@ -11,6 +11,7 @@ export type Condo = {
   rules: string | null;
   access_notes: string | null;
   contact_phone: string | null;
+  image_url: string | null;
   status: CondoStatus;
   created_at: string;
   updated_at: string;

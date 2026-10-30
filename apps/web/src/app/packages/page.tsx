@@ -23,12 +23,12 @@ async function PackageList() {
     redirect(homePathFor(me.role));
   }
 
-  const { data, error } = await supabase.from("packages").select("*").order("name");
+  const { data, error } = await supabase.from("packages").select("*, condos(name)").order("name");
   if (error) {
     return <p>Could not load packages: {error.message}</p>;
   }
 
-  const items = (data ?? []) as Package[];
+  const items = (data ?? []) as unknown as (Package & { condos: { name: string } | null })[];
   return (
     <>
       <p>
@@ -40,7 +40,7 @@ async function PackageList() {
         <ul>
           {items.map((item) => (
             <li key={item.id}>
-              <Link href={`/packages/${item.id}`}>{item.name}</Link> — {item.sessions_count} sessions —{" "}
+              <Link href={`/packages/${item.id}`}>{item.name}</Link> — {item.condos?.name ?? "no pool"} — {item.sessions_count} sessions —{" "}
               {item.is_active ? "active" : "inactive"}
             </li>
           ))}

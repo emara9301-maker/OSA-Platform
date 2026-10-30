@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { t, type Lang } from "@/lib/messages";
 
 // Reads a QR code with the camera using the browser's built-in BarcodeDetector.
 // Browsers without it (for example some iPhone versions) can still type the code in.
-export function QrScanner({ targetName }: { targetName: string }) {
+export function QrScanner({ targetName, lang }: { targetName: string; lang: Lang }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -15,7 +16,7 @@ export function QrScanner({ targetName }: { targetName: string }) {
     const Detector = (window as unknown as { BarcodeDetector?: new (options: object) => BarcodeDetectorLike })
       .BarcodeDetector;
     if (!Detector) {
-      setMessage("This browser cannot scan with the camera. Type the code instead.");
+      setMessage(t(lang, "noCamera"));
       return;
     }
 
@@ -41,14 +42,14 @@ export function QrScanner({ targetName }: { targetName: string }) {
       window.clearInterval(timer);
       stream.getTracks().forEach((track) => track.stop());
       setScanning(false);
-      setMessage("Code read. Check it, then send the request.");
+      setMessage(t(lang, "codeRead"));
     }, 400);
   }
 
   return (
     <div>
       <button type="button" onClick={start} disabled={scanning}>
-        Scan with camera
+        {t(lang, "scanCamera")}
       </button>
       <video ref={videoRef} muted playsInline style={{ display: scanning ? "block" : "none", maxWidth: "100%" }} />
       {message && <p role="status">{message}</p>}

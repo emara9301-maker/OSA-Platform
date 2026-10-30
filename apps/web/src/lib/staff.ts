@@ -20,6 +20,7 @@ export type Profile = {
   username: string | null;
   role: AccountRole;
   is_active: boolean;
+  avatar_path: string | null;
 };
 
 export async function getCurrentProfile(client: SupabaseClient): Promise<Profile | null> {
@@ -30,7 +31,7 @@ export async function getCurrentProfile(client: SupabaseClient): Promise<Profile
 
   const { data, error } = await client
     .from("profiles")
-    .select("id, email, full_name, username, role, is_active")
+    .select("id, email, full_name, username, role, is_active, avatar_path")
     .eq("id", userData.user.id)
     .maybeSingle();
 

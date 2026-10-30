@@ -16,6 +16,8 @@ export type PackageBadge = (typeof packageBadges)[number]["value"];
 
 export type Package = {
   id: string;
+  pool_id: string | null;
+  condo_id: string | null;
   name: string;
   short_pitch: string | null;
   age_min: number | null;

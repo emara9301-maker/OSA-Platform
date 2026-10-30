@@ -1,15 +1,21 @@
 import { Suspense } from "react";
 import { LoginForm } from "./login-form";
+import { currentLang, t } from "@/lib/i18n";
 
-async function LoginFormWithError({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
-  return <LoginForm error={error} />;
+async function LoginFormWithError({ searchParams }: { searchParams: Promise<{ error?: string; next?: string }> }) {
+  const lang = await currentLang();
+  const { error, next } = await searchParams;
+  return (
+    <>
+      <h1>{t(lang, "loginTitle")}</h1>
+      <LoginForm error={error} next={next} lang={lang} />
+    </>
+  );
 }
 
-export default function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; next?: string }> }) {
   return (
     <main>
-      <h1>Log in to OSA</h1>
       <Suspense fallback={<p>Loading...</p>}>
         <LoginFormWithError searchParams={searchParams} />
       </Suspense>

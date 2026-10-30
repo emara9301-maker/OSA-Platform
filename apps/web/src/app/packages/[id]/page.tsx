@@ -33,13 +33,18 @@ async function PackageDetail({
   }
 
   const { data } = await supabase.from("packages").select("*").eq("id", id).maybeSingle();
+  const { data: poolData } = await supabase.from("pools").select("id, name, condos(name)").order("name");
+  const pools = ((poolData ?? []) as unknown as { id: string; name: string; condos: { name: string }[] | null }[]).map((p) => ({
+    id: p.id,
+    name: `${p.condos?.[0]?.name ?? "condo"} — ${p.name}`,
+  }));
   if (!data) {
     notFound();
   }
 
   return (
     <>
-      <PackageForm item={data as Package} error={error} />
+      <PackageForm item={data as Package} pools={pools} error={error} />
 
       <h2>Delete</h2>
       <form action={deletePackage}>

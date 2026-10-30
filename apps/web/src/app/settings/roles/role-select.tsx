@@ -5,7 +5,7 @@ import { useState } from "react";
 import { accountRoles, type AccountRole } from "@/lib/staff";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 
-export function RoleSelect({ accountId, role }: { accountId: string; role: AccountRole }) {
+export function RoleSelect({ accountId, role, assignable }: { accountId: string; role: AccountRole; assignable: AccountRole[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +26,7 @@ export function RoleSelect({ accountId, role }: { accountId: string; role: Accou
   return (
     <>
       <select value={role} onChange={(e) => change(e.target.value as AccountRole)}>
-        {accountRoles.map((option) => (
+        {accountRoles.filter((option) => option === role || assignable.includes(option)).map((option) => (
           <option key={option} value={option}>
             {option}
           </option>

@@ -76,3 +76,18 @@ export async function setGrace(formData: FormData) {
   revalidatePath("/billing");
   redirect("/billing?saved=grace");
 }
+
+// Managers pause a family's package. Fields: "student_package_id", "starts_on", "ends_on".
+export async function pausePackageForFamily(formData: FormData) {
+  const supabase = await createServerSupabase();
+  const { error } = await supabase.rpc("pause_package", {
+    p_student_package_id: String(formData.get("student_package_id") ?? ""),
+    p_starts_on: String(formData.get("starts_on") ?? ""),
+    p_ends_on: String(formData.get("ends_on") ?? ""),
+  });
+  if (error) {
+    fail(error.message);
+  }
+  revalidatePath("/billing");
+  redirect("/billing?saved=paused");
+}

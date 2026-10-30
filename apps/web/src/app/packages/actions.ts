@@ -24,6 +24,8 @@ function number(formData: FormData, name: string): number | null {
 
 function readInput(formData: FormData): PackageInput {
   return {
+    pool_id: text(formData, "pool_id"),
+    condo_id: null,
     name: text(formData, "name") ?? "",
     short_pitch: text(formData, "short_pitch"),
     age_min: number(formData, "age_min"),

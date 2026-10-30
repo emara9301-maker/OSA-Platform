@@ -17,6 +17,7 @@ export type ClassRow = {
   id: string;
   name: string;
   condo_id: string;
+  pool_id: string | null;
   coach_id: string;
   level_id: string;
   class_type: "group" | "private";

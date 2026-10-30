@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { homePathFor, isStaff } from "@/lib/permissions";
 import { getCurrentProfile } from "@/lib/staff";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { requestTime } from "@/lib/clock";
 
 type Row = {
   id: string;
@@ -24,7 +25,8 @@ async function Upcoming() {
     redirect(homePathFor(me.role));
   }
 
-  const until = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: windowDays } = await supabase.rpc("staff_setting", { p_key: "schedule_window_days" });
+  const until = new Date((await requestTime()) + Number(windowDays) * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("sessions")
     .select("id, starts_at, status, classes(id, name)")

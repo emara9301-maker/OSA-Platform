@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
+import { t, type Lang } from "@/lib/messages";
 
 const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
 
-export function SignupForm() {
+export function SignupForm({ lang }: { lang: Lang }) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
@@ -24,14 +25,14 @@ export function SignupForm() {
 
     if (!usernamePattern.test(username)) {
       setBusy(false);
-      setMessage("Username must be 3 to 20 letters, digits or underscores.");
+      setMessage(t(lang, "usernameRule"));
       return;
     }
 
     const birth = new Date(`${dateOfBirth}T00:00:00`);
     if (Number.isNaN(birth.getTime()) || birth > new Date()) {
       setBusy(false);
-      setMessage("Enter a valid date of birth.");
+      setMessage(t(lang, "invalidBirth"));
       return;
     }
 
@@ -41,7 +42,7 @@ export function SignupForm() {
     });
     if (availabilityError || available === false) {
       setBusy(false);
-      setMessage(availabilityError ? availabilityError.message : "This username is already taken.");
+      setMessage(availabilityError ? availabilityError.message : t(lang, "takenUsername"));
       return;
     }
 
@@ -64,46 +65,39 @@ export function SignupForm() {
 
   if (done) {
     return (
-      <p role="status">
-        Account created. Check your email and click the confirmation link, then <Link href="/login">log in</Link>.
-      </p>
+      <>
+        <p role="status">{t(lang, "signedUpCheck")}</p>
+        <p>
+          <Link href="/login">{t(lang, "logInLink")}</Link>
+        </p>
+      </>
     );
   }
 
   return (
     <form onSubmit={submit}>
       <label>
-        Full name
+        {t(lang, "fullName")}
         <input value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required />
       </label>
       <label>
-        Date of birth
-        <input
-          type="date"
-          value={dateOfBirth}
-          onChange={(e) => setDateOfBirth(e.target.value)}
-          required
-        />
+        {t(lang, "dateOfBirth")}
+        <input type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} required />
       </label>
       <label>
-        Email
+        {t(lang, "email")}
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </label>
       <label>
-        Username
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoComplete="username"
-          required
-        />
+        {t(lang, "username")}
+        <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
       </label>
       <label>
-        Phone number
+        {t(lang, "phone")}
         <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required />
       </label>
       <label>
-        Password
+        {t(lang, "password")}
         <input
           type="password"
           value={password}
@@ -115,12 +109,12 @@ export function SignupForm() {
       </label>
 
       <button type="submit" disabled={busy}>
-        Sign up
+        {t(lang, "signUp")}
       </button>
       {message && <p role="alert">{message}</p>}
 
       <nav>
-        <Link href="/login">Log in</Link>
+        <Link href="/login">{t(lang, "logIn")}</Link>
       </nav>
     </form>
   );

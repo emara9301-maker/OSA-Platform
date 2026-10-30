@@ -2,9 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Number of enrolled students with no report for a lesson that has already happened in the last 7 days.
 // Row-level security limits the count to the lessons this account may see.
-export async function countMissingReports(client: SupabaseClient): Promise<number> {
+export async function countMissingReports(client: SupabaseClient, days: number): Promise<number> {
   const now = new Date();
-  const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
   const { data: sessions } = await client
     .from("sessions")

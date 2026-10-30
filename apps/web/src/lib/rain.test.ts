@@ -29,7 +29,7 @@ async function account(name: string, role: AccountRole): Promise<Account> {
     email,
     password,
     email_confirm: true,
-    user_metadata: { age: "30", username: `${name}_${runId}` },
+    user_metadata: { age: "30", date_of_birth: "1996-01-01", username: `${name}_${runId}` },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");
@@ -66,6 +66,19 @@ async function placeLesson(sessionId: string, startsAt: Date) {
 function morningIn(days: number): Date {
   const local = new Date(Date.now() + days * day + 8 * 60 * minute);
   return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 3, 13));
+}
+
+
+// A paid package with plenty of sessions, so the student may be marked as attending.
+async function grantPackage(owner: { id: string; client: SupabaseClient }, studentId: string, poolId: string) {
+  const { data: pkg } = await owner.client
+    .from("packages")
+    .insert({ condo_id: poolId, name: `Attend package ${runId} ${studentId.slice(0, 6)}`, type: "small_group", sessions_count: 50, session_minutes: 60, price: 100, is_active: true })
+    .select("id")
+    .single();
+  const { data: invoiceId } = await owner.client.rpc("create_invoice", { p_student_id: studentId, p_package_id: pkg?.id });
+  await admin.rpc("apply_payment", { p_invoice_id: invoiceId, p_gateway: "mock", p_gateway_ref: `MOCK-${studentId.slice(0, 8)}`, p_recorded_by: owner.id });
+  await admin.from("student_packages").update({ ends_on: "2030-12-31" }).eq("student_id", studentId);
 }
 
 describe("rain holds, cancellations and make-up lessons", () => {
@@ -147,6 +160,7 @@ describe("rain holds, cancellations and make-up lessons", () => {
         .single();
       studentIds.push(student?.id as string);
       await admin.from("class_enrolments").insert({ class_id: classId, student_id: student?.id, });
+      await grantPackage(owner, student?.id as string, condoId);
     }
   });
 

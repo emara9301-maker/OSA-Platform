@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { CondoInput } from "@/lib/condos";
+import { uploadPoolPhoto } from "@/lib/uploads";
 import { createServerSupabase } from "@/lib/supabase-server";
 
 function text(formData: FormData, name: string): string | null {
@@ -31,8 +32,21 @@ function readInput(formData: FormData): CondoInput {
 
 export async function saveCondo(formData: FormData) {
   const id = text(formData, "id");
-  const input = readInput(formData);
+  const input: CondoInput & { image_url?: string | null } = {
+    ...readInput(formData),
+    image_url: text(formData, "current_image_url"),
+  };
   const supabase = await createServerSupabase();
+
+  const file = formData.get("image");
+  if (file instanceof File && file.size > 0) {
+    try {
+      input.image_url = await uploadPoolPhoto(supabase, file);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not upload the photo.";
+      redirect(`${id ? `/condos/${id}` : "/condos/new"}?error=${encodeURIComponent(message)}`);
+    }
+  }
 
   if (id) {
     const { error } = await supabase.from("condos").update(input).eq("id", id);

@@ -25,7 +25,7 @@ async function accountWithRole(name: string, role: AccountRole): Promise<Account
     email,
     password,
     email_confirm: true,
-    user_metadata: { age: "30", username: `${name}${runId}` },
+    user_metadata: { age: "30", date_of_birth: "1996-01-01", username: `${name}${runId}` },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");
@@ -203,9 +203,10 @@ describe("condos and audit log", () => {
   });
 
   it("only the owner and department heads read the audit log", async () => {
-    const { data: asCoach } = await coach.client.from("audit_log").select("id");
-    const { data: asHead } = await departmentHead.client.from("audit_log").select("id");
-    const { data: asOwner } = await owner.client.from("audit_log").select("id");
+    // One row is enough to show who may read the log. The log is long, so a full read would be slow.
+    const { data: asCoach } = await coach.client.from("audit_log").select("id").limit(1);
+    const { data: asHead } = await departmentHead.client.from("audit_log").select("id").limit(1);
+    const { data: asOwner } = await owner.client.from("audit_log").select("id").limit(1);
 
     expect(asCoach).toEqual([]);
     expect(asHead?.length).toBeGreaterThan(0);

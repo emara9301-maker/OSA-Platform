@@ -1,7 +1,6 @@
 // Malaysia has no daylight saving, so a fixed offset keeps the wall-clock maths simple.
 const kualaLumpurOffsetMs = 8 * 60 * 60 * 1000;
 const dayMs = 24 * 60 * 60 * 1000;
-const slotStepMinutes = 30;
 
 export type PoolHours = { openMinutes: number; closeMinutes: number };
 export type Busy = { start: Date; end: Date };
@@ -43,6 +42,7 @@ export function suggestMakeUpSlots(input: {
   busy: Busy[];
   count: number;
   searchDays: number;
+  stepMinutes: number;
 }): Date[] {
   const earliest = input.now.getTime() + input.minNoticeHours * 60 * 60 * 1000;
   const local = new Date(input.now.getTime() + kualaLumpurOffsetMs);
@@ -55,7 +55,7 @@ export function suggestMakeUpSlots(input: {
     for (
       let minute = input.pool.openMinutes;
       minute + input.durationMinutes <= input.pool.closeMinutes && slots.length < input.count;
-      minute += slotStepMinutes
+      minute += input.stepMinutes
     ) {
       const start = midnight + minute * 60 * 1000;
       const end = start + durationMs;

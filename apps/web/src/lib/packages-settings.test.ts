@@ -25,7 +25,7 @@ async function accountWithRole(name: string, role: AccountRole): Promise<Account
     email,
     password,
     email_confirm: true,
-    user_metadata: { age: "30", username: `${name}_${runId}` },
+    user_metadata: { age: "30", date_of_birth: "1996-01-01", username: `${name}_${runId}` },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");
@@ -61,6 +61,7 @@ describe("packages and settings", () => {
   let coach: Account;
   let student: Account;
   let packageId: string;
+  let poolId: string;
 
   beforeAll(async () => {
     // Earlier runs may have left settings changed; put the defaults back first.
@@ -71,12 +72,19 @@ describe("packages and settings", () => {
     departmentHead = await accountWithRole("head", "department_head");
     coach = await accountWithRole("coach", "coach");
     student = await accountWithRole("student", "student");
+    const { data: pool } = await admin
+      .from("condos")
+      .insert({ name: `Pool ${runId}`, address: "1 Jalan Test", pool_hours: "7am-10pm", contact_phone: "+60144444444" })
+      .select("id")
+      .single();
+    poolId = pool?.id as string;
   });
 
   afterAll(async () => {
     for (const id of packageIds) {
       await admin.from("packages").delete().eq("id", id);
     }
+    await admin.from("condos").delete().eq("id", poolId);
     for (const id of userIds) {
       await admin.auth.admin.deleteUser(id);
     }
@@ -85,7 +93,7 @@ describe("packages and settings", () => {
   it("the owner adds a package; validity defaults to 30 days and price per session is computed", async () => {
     const { data, error } = await owner.client
       .from("packages")
-      .insert({ ...completePackage, name: `Owner ${runId}` })
+      .insert({ ...completePackage, condo_id: poolId, name: `Owner ${runId}` })
       .select("id, validity_days, price_per_session, is_active, created_by")
       .single();
 
@@ -104,14 +112,14 @@ describe("packages and settings", () => {
   it("a package with an age range that is backwards is rejected", async () => {
     const { error } = await owner.client
       .from("packages")
-      .insert({ ...completePackage, name: "Bad ages", age_min: 10, age_max: 5 });
+      .insert({ ...completePackage, condo_id: poolId, name: "Bad ages", age_min: 10, age_max: 5 });
     expect(error).not.toBeNull();
   });
 
   it("a package without a price is allowed until OSA sends prices", async () => {
     const { data, error } = await owner.client
       .from("packages")
-      .insert({ ...completePackage, name: `No price ${runId}`, price: null })
+      .insert({ ...completePackage, condo_id: poolId, name: `No price ${runId}`, price: null })
       .select("id, price_per_session")
       .single();
 
@@ -126,7 +134,7 @@ describe("packages and settings", () => {
   it("a department head adds, edits and deletes packages", async () => {
     const { data, error } = await departmentHead.client
       .from("packages")
-      .insert({ ...completePackage, name: `Head ${runId}` })
+      .insert({ ...completePackage, condo_id: poolId, name: `Head ${runId}` })
       .select("id")
       .single();
     expect(error).toBeNull();
@@ -164,7 +172,7 @@ describe("packages and settings", () => {
   it("the owner deletes a package", async () => {
     const { data: created } = await owner.client
       .from("packages")
-      .insert({ ...completePackage, name: `Owner delete ${runId}` })
+      .insert({ ...completePackage, condo_id: poolId, name: `Owner delete ${runId}` })
       .select("id")
       .single();
     if (!created) {
@@ -180,13 +188,13 @@ describe("packages and settings", () => {
     expect(deleted).toHaveLength(1);
   });
 
-  it("a coach and a student cannot see or add packages", async () => {
+  it("a coach sees no packages, a student sees only active ones, and neither can add one", async () => {
     const { data: asCoach } = await coach.client.from("packages").select("id");
-    const { data: asStudent } = await student.client.from("packages").select("id");
-    const { error: insertError } = await coach.client.from("packages").insert({ ...completePackage, name: "Nope" });
+    const { data: asStudent } = await student.client.from("packages").select("id, is_active");
+    const { error: insertError } = await coach.client.from("packages").insert({ ...completePackage, condo_id: poolId, name: "Nope" });
 
     expect(asCoach).toEqual([]);
-    expect(asStudent).toEqual([]);
+    expect((asStudent ?? []).every((row) => row.is_active === true)).toBe(true);
     expect(insertError).not.toBeNull();
   });
 
@@ -284,3 +292,26 @@ describe("packages and settings", () => {
     expect(deleteError).not.toBeNull();
   });
 });
+
+describe("numbers in settings reach the staff screens", () => {
+  it("a change to a staff-visible number is read by staff, and money settings stay hidden from coaches", async () => {
+    const owner = await accountWithRole("owner", "owner");
+    const coach = await accountWithRole("coach", "coach");
+
+    const { data: before } = await coach.client.rpc("staff_setting", { p_key: "schedule_window_days" });
+    expect(before).toBe(14);
+
+    const { error: changeError } = await owner.client
+      .from("settings")
+      .update({ value: 21 })
+      .eq("key", "schedule_window_days");
+    expect(changeError).toBeNull();
+    const { data: after } = await coach.client.rpc("staff_setting", { p_key: "schedule_window_days" });
+    expect(after).toBe(21);
+
+    await owner.client.from("settings").update({ value: 14 }).eq("key", "schedule_window_days");
+    const { error: hidden } = await coach.client.rpc("staff_setting", { p_key: "sibling_discount_percent" });
+    expect(hidden?.message).toContain("not available to staff");
+  });
+});
+

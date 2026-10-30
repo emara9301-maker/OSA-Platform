@@ -1,17 +1,20 @@
 import { classTypes, weekdays, type ClassRow } from "@/lib/classes";
 import { saveClass } from "./actions";
+import { CondoPoolFields } from "./condo-pool-fields";
 
 type Option = { id: string; name: string };
 
 export function ClassForm({
   item,
   condos,
+  pools,
   coaches,
   levels,
   error,
 }: {
   item: ClassRow | null;
   condos: Option[];
+  pools: { id: string; name: string; condo_id: string }[];
   coaches: Option[];
   levels: Option[];
   error?: string;
@@ -22,7 +25,7 @@ export function ClassForm({
 
       <Field label="Class name" name="name" value={item?.name} required />
 
-      <Select label="Condo" name="condo_id" value={item?.condo_id} options={condos} />
+      <CondoPoolFields condos={condos} pools={pools} condoId={item?.condo_id} poolId={item?.pool_id ?? undefined} />
       <Select label="Coach" name="coach_id" value={item?.coach_id} options={coaches} />
       <Select label="Level" name="level_id" value={item?.level_id} options={levels} />
 

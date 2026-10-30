@@ -1,15 +1,17 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { createInvoice, payInvoice, setGrace } from "./actions";
+import { createInvoice, payInvoice, pausePackageForFamily, setGrace } from "./actions";
 import { canManageCondos, homePathFor } from "@/lib/permissions";
 import { getCurrentProfile } from "@/lib/staff";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { requestTime } from "@/lib/clock";
 
 const savedMessages: Record<string, string> = {
   invoice: "Invoice created.",
   payment: "Payment recorded. The package has started.",
   grace: "Grace period saved.",
+  paused: "Package paused.",
 };
 
 const statusLabels: Record<string, string> = {
@@ -33,6 +35,10 @@ async function Board({ searchParams }: { searchParams: Promise<{ error?: string;
 
   await supabase.rpc("generate_billing");
 
+  const { data: graceRow } = await supabase.from("settings").select("value").eq("key", "grace_default_days").maybeSingle();
+  const graceDays = Number(graceRow?.value ?? 7);
+  const graceDefault = new Date((await requestTime()) + graceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
   const { data: invoiceData } = await supabase
     .from("invoices")
     .select("id, student_id, kind, amount, discount_percent, due_on, status, students(full_name), packages(name)")
@@ -49,6 +55,13 @@ async function Board({ searchParams }: { searchParams: Promise<{ error?: string;
     students: { full_name: string } | null;
     packages: { name: string } | null;
   }[];
+
+  const { data: periodData } = await supabase
+    .from("student_packages")
+    .select("id, ends_on, students(full_name)")
+    .gte("ends_on", new Date((await requestTime()) + 8 * 60 * 60 * 1000).toISOString().slice(0, 10))
+    .order("ends_on");
+  const periods = (periodData ?? []) as unknown as { id: string; ends_on: string; students: { full_name: string } | null }[];
 
   const { data: studentData } = await supabase.from("students").select("id, full_name").order("full_name");
   const students = (studentData ?? []) as { id: string; full_name: string }[];
@@ -107,6 +120,36 @@ async function Board({ searchParams }: { searchParams: Promise<{ error?: string;
         <button type="submit">Create invoice</button>
       </form>
 
+      <h2>Pause a family&apos;s package</h2>
+      {periods.length === 0 ? (
+        <p>No package is running.</p>
+      ) : (
+        <form action={pausePackageForFamily}>
+          <label>
+            Package
+            <select name="student_package_id" required defaultValue="">
+              <option value="" disabled>
+                Choose a package
+              </option>
+              {periods.map((period) => (
+                <option key={period.id} value={period.id}>
+                  {period.students?.full_name ?? "child"} — ends {period.ends_on}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            From
+            <input type="date" name="starts_on" required />
+          </label>
+          <label>
+            To
+            <input type="date" name="ends_on" required />
+          </label>
+          <button type="submit">Pause package</button>
+        </form>
+      )}
+
       <h2>Allow a grace period</h2>
       <form action={setGrace}>
         <label>
@@ -124,7 +167,7 @@ async function Board({ searchParams }: { searchParams: Promise<{ error?: string;
         </label>
         <label>
           Until
-          <input type="date" name="until" required />
+          <input type="date" name="until" required defaultValue={graceDefault} />
         </label>
         <button type="submit">Save grace period</button>
       </form>

@@ -9,7 +9,6 @@ import { parsePoolHours, suggestMakeUpSlots, type Busy } from "@/lib/make-ups";
 
 const minute = 60 * 1000;
 const day = 24 * 60 * minute;
-const searchDays = 14;
 const kl = (value: string | Date) =>
   new Date(value).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur", dateStyle: "medium", timeStyle: "short" });
 
@@ -41,6 +40,13 @@ async function Board({ searchParams }: { searchParams: Promise<{ error?: string;
   }
 
   await supabase.rpc("settle_weather_holds");
+
+  const { data: settingRows } = await supabase.from("settings").select("key, value");
+  const setting = new Map(((settingRows ?? []) as { key: string; value: number }[]).map((row) => [row.key, Number(row.value)]));
+  const searchDays = setting.get("make_up_search_days") ?? 14;
+  const suggestionCount = setting.get("make_up_suggestion_count") ?? 3;
+  const stepMinutes = setting.get("make_up_slot_step_minutes") ?? 30;
+  const minNoticeHours = setting.get("make_up_min_notice_hours") ?? 6;
 
   const now = new Date();
   const todayStart = startOfTodayInMalaysia(now);
@@ -196,12 +202,13 @@ async function Board({ searchParams }: { searchParams: Promise<{ error?: string;
           const slots = pool
             ? suggestMakeUpSlots({
                 now,
-                minNoticeHours: 6,
+                minNoticeHours,
                 durationMinutes: classInfo.duration_minutes,
                 pool,
                 busy: busyByCoach.get(classInfo.coach_id) ?? [],
-                count: 3,
+                count: suggestionCount,
                 searchDays,
+                stepMinutes,
               })
             : [];
           const expires = group.map((t) => t.expires_at).sort()[0];

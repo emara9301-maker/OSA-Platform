@@ -11,6 +11,7 @@ import { canManageCondos } from "@/lib/permissions";
 import { weekdays } from "@/lib/classes";
 import { getCurrentProfile } from "@/lib/staff";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { requestTime } from "@/lib/clock";
 
 type Option = { id: string; name: string };
 type Coach = { coach_id: string; profiles: { username: string | null } | null };
@@ -50,7 +51,8 @@ async function StudentDetail({
     const classList = ((enrolData ?? []) as unknown as { classes: { id: string; name: string; weekday: number; start_time: string } | null }[])
       .map((row) => row.classes)
       .filter((row): row is { id: string; name: string; weekday: number; start_time: string } => row !== null);
-    const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: historyDays } = await supabase.rpc("staff_setting", { p_key: "student_history_days" });
+    const since = new Date((await requestTime()) - Number(historyDays) * 24 * 60 * 60 * 1000).toISOString();
     const classIds = classList.map((c) => c.id);
     const { data: lessonData } = await supabase
       .from("sessions")
@@ -80,8 +82,12 @@ async function StudentDetail({
           <dd>{ageFrom(student.date_of_birth)}</dd>
           <dt>Language</dt>
           <dd>{student.language ?? "-"}</dd>
-          <dt>Status</dt>
-          <dd>{student.status}</dd>
+          {manage && (
+            <>
+              <dt>Status</dt>
+              <dd>{student.status}</dd>
+            </>
+          )}
           <dt>Start level</dt>
           <dd>{student.start_level ?? "-"}</dd>
           <dt>Current level</dt>

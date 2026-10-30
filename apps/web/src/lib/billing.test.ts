@@ -29,7 +29,7 @@ async function account(name: string, role: AccountRole): Promise<Account> {
     email,
     password,
     email_confirm: true,
-    user_metadata: { age: "30", username: `${name}_${runId}` },
+    user_metadata: { age: "30", date_of_birth: "1996-01-01", username: `${name}_${runId}` },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");
@@ -54,6 +54,12 @@ async function account(name: string, role: AccountRole): Promise<Account> {
 // Malaysian date of today as YYYY-MM-DD.
 function todayInMalaysia(): string {
   return new Date(Date.now() + 8 * 60 * minute).toISOString().slice(0, 10);
+}
+
+// The start of today in Malaysia, as a UTC instant.
+function startOfTodayInMalaysia(): number {
+  const local = new Date(Date.now() + 8 * 60 * minute);
+  return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), -8);
 }
 
 // A time today in Malaysia (the packages start today, so lessons placed today fall inside them).
@@ -133,7 +139,7 @@ describe("billing, packages and deductions", () => {
 
     const { data: pkg, error: pkgError } = await owner.client
       .from("packages")
-      .insert({
+      .insert({ condo_id: condoId,
         name: `Billing package ${runId}`,
         type: "small_group",
         sessions_count: 4,
@@ -269,7 +275,8 @@ describe("billing, packages and deductions", () => {
   });
 
   it("a rain-counted lesson deducts each student once, and attendance does not deduct it again", async () => {
-    await placeLesson(sessions[2], new Date(Date.now() - 40 * minute));
+    // Forty minutes into the lesson, but never before today starts: the package only covers today.
+    await placeLesson(sessions[2], new Date(Math.max(Date.now() - 40 * minute, startOfTodayInMalaysia())));
     const { data } = await coach.client.rpc("start_weather_hold", { p_session_id: sessions[2] });
     expect(data).toBe("counted");
 
@@ -379,5 +386,39 @@ describe("billing, packages and deductions", () => {
       .eq("recipient_id", parent.id)
       .like("body", "Renewal of RM%");
     expect((messages ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("a booked make-up is cancelled when the original lesson turns out to have gone ahead, and families are told", async () => {
+    const period = await currentPeriod(childA);
+    await admin.from("student_packages").update({ sessions_total: 100 }).eq("student_id", childA).eq("starts_on", period.starts_on);
+    await placeLesson(sessions[5], todayAt(16));
+    await owner.client.rpc("cancel_session_for_reason", { p_session_id: sessions[5], p_kind: "holiday", p_reason: "Holiday" });
+    const { data: tokens } = await admin.from("make_up_tokens").select("id").eq("source_session_id", sessions[5]);
+    const tokenIds = (tokens ?? []).map((row) => row.id as string);
+
+    const { data: makeUpId, error } = await owner.client.rpc("schedule_make_up", {
+      p_class_id: (await admin.from("sessions").select("class_id").eq("id", sessions[5]).single()).data?.class_id,
+      p_starts_at: new Date(todayAt(11, 13).getTime() + 5 * 24 * 60 * minute).toISOString(),
+      p_token_ids: tokenIds,
+    });
+    expect(error).toBeNull();
+
+    const attended = await coach.client.from("attendance").upsert(
+      [{ session_id: sessions[5], student_id: childA, status: "present", excused: false }],
+      { onConflict: "session_id,student_id" },
+    );
+    expect(attended.error).toBeNull();
+
+    const { data: makeUp } = await admin.from("sessions").select("status").eq("id", makeUpId as string).single();
+    expect(makeUp?.status).toBe("cancelled");
+    const { data: after } = await admin.from("make_up_tokens").select("status").eq("source_session_id", sessions[5]);
+    expect(after?.every((t) => t.status === "void")).toBe(true);
+    const { data: messages } = await admin
+      .from("outbound_messages")
+      .select("body, channel")
+      .eq("recipient_id", parent.id)
+      .like("body", "Make-up lesson cancelled%");
+    expect(messages?.length).toBeGreaterThan(0);
+    expect(messages?.every((m) => m.channel === "email")).toBe(true);
   });
 });

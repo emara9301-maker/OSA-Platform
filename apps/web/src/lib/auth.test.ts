@@ -23,7 +23,7 @@ async function createUser(name: string, metadata: Record<string, string>) {
   const { data, error } = await admin.auth.admin.createUser({
     email,
     password: "123456",
-    user_metadata: { age: "30", ...metadata },
+    user_metadata: { age: "30", date_of_birth: "1996-01-01", ...metadata },
   });
   if (error || !data.user) {
     throw new Error(error?.message ?? "user not created");
@@ -114,7 +114,7 @@ describe("usernames", () => {
     const second = admin.auth.admin.createUser({
       email: `second.${runId}@osa.test`,
       password: "123456",
-      user_metadata: { age: "30", username: `DUP${runId}` },
+      user_metadata: { age: "30", date_of_birth: "1996-01-01", username: `DUP${runId}` },
     });
 
     const { error } = await second;

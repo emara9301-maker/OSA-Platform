@@ -22,7 +22,12 @@ async function NewPackageForm({ searchParams }: { searchParams: Promise<{ error?
   if (!canManagePackagesAndSettings(me.role)) {
     redirect(homePathFor(me.role));
   }
-  return <PackageForm item={null} error={error} />;
+  const { data: poolData } = await supabase.from("pools").select("id, name, condos(name)").order("name");
+  const pools = ((poolData ?? []) as unknown as { id: string; name: string; condos: { name: string }[] | null }[]).map((p) => ({
+    id: p.id,
+    name: `${p.condos?.[0]?.name ?? "condo"} — ${p.name}`,
+  }));
+  return <PackageForm item={null} pools={pools} error={error} />;
 }
 
 export default function NewPackagePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
